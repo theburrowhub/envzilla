@@ -1,25 +1,29 @@
+"""Basic CLI integration tests."""
+
 from pathlib import Path
 import os
 import sys
 
-from click.testing import CliRunner
-
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+
+from click.testing import CliRunner
 from envzilla import cli
 
 
-def test_main_runs():
+def test_main_runs() -> None:
+    """``envzilla`` shows the help message without error."""
     runner = CliRunner()
     result = runner.invoke(cli.main, ["--help"])
     assert result.exit_code == 0
     assert "Commands:" in result.output
 
 
-def test_list_command():
+def test_list_command() -> None:
+    """The ``list`` command outputs information about variables."""
     runner = CliRunner()
     with runner.isolated_filesystem():
-        Path(".env.dist").write_text("VAR1=\nVAR2=1\n")
-        Path(".env").write_text("VAR2=foo\n")
+        Path(".env.dist").write_text("VAR1=\nVAR2=1\n", encoding="utf-8")
+        Path(".env").write_text("VAR2=foo\n", encoding="utf-8")
         result = runner.invoke(cli.main, ["list"])
         assert result.exit_code == 0
         assert "VAR1" in result.output
