@@ -1,26 +1,38 @@
+"""Command line interface for envzilla."""
+
 import os
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Union
 
-import click
+try:
+    import click
+except ImportError as exc:  # pragma: no cover - dependency missing
+    raise RuntimeError("The 'click' package is required to run envzilla") from exc
 try:
     from rich.console import Console
     from rich.table import Table
-except Exception:  # pragma: no cover - fallback for environments without rich
+except ImportError:  # pragma: no cover - fallback for environments without rich
     class Table:  # type: ignore
-        def __init__(self, title: str | None = None) -> None:
+        """Very small fallback table implementation."""
+
+        def __init__(self, title: Optional[str] = None) -> None:
             self.title = title
             self.columns: List[str] = []
-            self.rows: List[tuple[str, ...]] = []
+            self.rows: List[Tuple[str, ...]] = []
 
         def add_column(self, name: str) -> None:
+            """Add a column to the table."""
             self.columns.append(name)
 
         def add_row(self, *args: str) -> None:
+            """Add a row to the table."""
             self.rows.append(tuple(args))
 
     class Console:  # type: ignore
-        def print(self, table: Table) -> None:
+        """Simple console fallback printing tables to stdout."""  # pylint: disable=too-few-public-methods
+
+        def print(self, table: "Table") -> None:
+            """Render *table* to standard output."""
             header = " | ".join(table.columns)
             print(header)
             for row in table.rows:
@@ -32,6 +44,34 @@ EMOJI_MISSING = "❌"
 EMOJI_EMPTY = "⚠️"
 
 console = Console()
+
+
+def _prompt_for_value(key: str, default_val: str, meta: Dict[str, str]) -> str:
+    """Prompt the user for a value respecting the metadata from the template."""
+
+    question = meta.get("question", f"Set a value for {key}")
+    enum = meta.get("enum")
+    typ = meta.get("type")
+
+    prompt_type: Optional[Union[click.ParamType, click.Choice, type]] = None
+    if enum:
+        choices = [c.strip() for c in enum.split(",")]
+        prompt_type = click.Choice(choices)
+    elif typ == "number":
+        prompt_type = int if (default_val and default_val.isdigit()) else float
+    elif typ == "bool":
+        prompt_type = click.Choice(["True", "False"])
+
+    prompt_text = question
+    default_for_prompt = default_val if default_val != "" else ""
+
+    resp = click.prompt(
+        prompt_text,
+        default=default_for_prompt,
+        show_default=default_for_prompt != "",
+        type=prompt_type,
+    )
+    return str(resp)
 
 
 def _parse_env_file(path: Path) -> Dict[str, str]:
@@ -52,7 +92,9 @@ def _parse_env_file(path: Path) -> Dict[str, str]:
     return data
 
 
-def _find_template(base_dir: Path, template: str | None) -> Path:
+def _find_template(base_dir: Path, template: Optional[str]) -> Path:
+    """Return the template file to use inside *base_dir*."""
+
     if template:
         path = base_dir / template
         if not path.exists():
@@ -66,6 +108,8 @@ def _find_template(base_dir: Path, template: str | None) -> Path:
 
 
 def _find_env_files(base_dir: Path, template_path: Path) -> List[Path]:
+    """Return all environment files in *base_dir* excluding *template_path*."""
+
     files: List[Path] = []
     for path in base_dir.glob(".env*"):
         if path == template_path:
@@ -106,14 +150,14 @@ def _parse_template_line(line: str) -> Optional[Tuple[str, str, Dict[str, str]]]
 
 @click.group()
 def main() -> None:
-    """envzilla CLI."""
-    pass
+    """Entry point for the ``envzilla`` command line interface."""
 
 
-@main.command()
+
+@main.command(name="list")
 @click.option("--template", type=click.Path(), help="Template file to read")
 @click.option("--only-missing", is_flag=True, help="Show only missing or empty variables")
-def list(template: str | None, only_missing: bool) -> None:  # noqa: D401
+def list_command(template: Optional[str], only_missing: bool) -> None:  # noqa: D401
     """List environment variables across files."""
     base_dir = Path(os.getcwd())
     template_path = _find_template(base_dir, template)
@@ -144,10 +188,9 @@ def list(template: str | None, only_missing: bool) -> None:  # noqa: D401
 
 @main.command()
 @click.option("--template", type=click.Path(), help="Template file to read")
-def create(template: str | None) -> None:
+def create(template: Optional[str]) -> None:
     """Create an environment file from a template."""
-    base_dir = Path(os.getcwd())
-    template_path = _find_template(base_dir, template)
+    template_path = _find_template(Path.cwd(), template)
 
     env_name = click.prompt(
         "Enter environment name", default="", show_default=False
@@ -156,9 +199,9 @@ def create(template: str | None) -> None:
         raise click.ClickException("Invalid environment name")
 
     env_file = ".env" if not env_name else f".env.{env_name}"
-    env_path = base_dir / env_file
+    env_path = Path.cwd() / env_file
 
-    existing_data: Dict[str, str] = {}
+    data: Dict[str, str] = {}
     if env_path.exists():
         action = click.prompt(
             f"{env_file} exists. Choose action",
@@ -169,43 +212,18 @@ def create(template: str | None) -> None:
             click.echo("Cancelled")
             return
         if action == "merge":
-            existing_data = _parse_env_file(env_path)
+            data = _parse_env_file(env_path)
 
-    data = existing_data.copy()
     for line in template_path.read_text().splitlines():
-        parsed = _parse_template_line(line)
-        if not parsed:
+        parsed_line = _parse_template_line(line)
+        if not parsed_line:
             continue
-        key, value, meta = parsed
-        default_val = data.get(key, value)
+        key, value, meta = parsed_line
+        data[key] = _prompt_for_value(key, data.get(key, value), meta)
 
-        question = meta.get("question", f"Set a value for {key}")
-        enum = meta.get("enum")
-        typ = meta.get("type")
-
-        prompt_text = question
-        default_for_prompt = default_val if default_val != "" else ""
-
-        prompt_type: click.ParamType | click.Choice | None = None
-        if enum:
-            choices = [c.strip() for c in enum.split(",")]
-            prompt_type = click.Choice(choices)
-        elif typ == "number":
-            prompt_type = int if (default_val and default_val.isdigit()) else float
-        elif typ == "bool":
-            prompt_type = click.Choice(["True", "False"])
-
-        resp = click.prompt(
-            prompt_text,
-            default=default_for_prompt,
-            show_default=default_for_prompt != "",
-            type=prompt_type,
-        )
-        data[key] = str(resp)
-
-    with env_path.open("w") as f:
-        for k, v in data.items():
-            f.write(f"{k}={v}\n")
+    with env_path.open("w", encoding="utf-8") as handle:
+        for key, value in data.items():
+            handle.write(f"{key}={value}\n")
 
     click.echo(f"Environment written to {env_file}")
 
