@@ -1,7 +1,10 @@
 from pathlib import Path
+import os
+import sys
 
 from click.testing import CliRunner
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 from envzilla import cli
 
 
@@ -21,5 +24,5 @@ def test_list_command():
         assert result.exit_code == 0
         assert "VAR1" in result.output
         assert "VAR2" in result.output
-        assert cli.EMOJI_EMPTY in result.output
+        assert cli.EMOJI_MISSING in result.output
         assert cli.EMOJI_CHECK in result.output
