@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "envzilla"
+version = "0.1.0"
+description = "A Python CLI tool to manage .env files with ease."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "The Burrow Hub", email = "contact@burrowhub.org" }
+]
+dependencies = []
+
+[project.scripts]
+envzilla = "envzilla.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "commitizen",
+]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$version"
