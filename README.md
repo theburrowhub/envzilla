@@ -22,6 +22,14 @@ Para ejecutar la herramienta desde el entorno virtual:
 make run
 ```
 
+### Comandos disponibles
+
+Por ahora existe el comando `list`, que compara un archivo de plantilla
+(por defecto `.env.dist` o `.env.template`) con el resto de archivos `.env`
+del directorio y muestra una tabla con el estado de cada variable.
+Se puede usar `--only-missing` para mostrar solo las variables que faltan o
+que no tienen valor.
+
 ## Ejecutar pruebas
 
 ```bash
